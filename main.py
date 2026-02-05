@@ -1,7 +1,6 @@
 import json
 import os
 import time
-import random
 from playwright.sync_api import sync_playwright
 
 # --- CONFIGURATION ---
@@ -10,120 +9,130 @@ OUTPUT_FILE = "fawanews_links.json"
 
 def run():
     with sync_playwright() as p:
-        # Browser launch settings
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
+        
+        # --- PART 1: LOAD HOMEPAGE & BYPASS BLOCK ---
         page = context.new_page()
-
-        # Variable to store the m3u8 link
-        found_m3u8 = None
-
-        # --- STEP 1: SMART REFRESH LOGIC (Bypass Blocking) ---
-        print(f"[-] Trying to access: {BASE_URL}")
+        print(f"[-] Accessing Home: {BASE_URL}")
         
         site_loaded = False
-        max_retries = 10  # Maximum 10 times refresh korbe
-        
-        for attempt in range(max_retries):
+        for attempt in range(1, 11): # 10 times retry
             try:
-                page.goto(BASE_URL, timeout=30000)
-                
-                # Check jodi "Sports News" lekha ta page e thake (Screenshot onujayi)
-                if page.get_by_text("Sports News").is_visible():
-                    print(f"[SUCCESS] Site loaded successfully on attempt {attempt + 1}")
+                page.goto(BASE_URL, timeout=60000, wait_until="domcontentloaded")
+                # Check for specific content that indicates success
+                if page.locator("text=Sports News").is_visible() or page.locator("text=Schedule").is_visible():
+                    print(f"[SUCCESS] Site loaded on attempt {attempt}")
                     site_loaded = True
                     break
                 else:
-                    print(f"[INFO] Blocked page detected. Refreshing... (Attempt {attempt + 1})")
-                    time.sleep(3) # 3 seconds wait before refresh
+                    print(f"[INFO] Blocked/Loading... Refreshing ({attempt}/10)")
+                    time.sleep(3)
             except Exception as e:
-                print(f"[RETRY] Error loading page: {e}. Retrying...")
-                time.sleep(2)
-
+                print(f"[RETRY] Error: {e}")
+                time.sleep(3)
+        
         if not site_loaded:
-            print("[FAIL] Could not bypass the block page after multiple attempts.")
+            print("[FATAL] Could not load the site content.")
             browser.close()
             return
 
-        # --- STEP 2: NETWORK LISTENER SETUP ---
-        # Video play korle network tab e ja asbe ta capture korbe
-        def handle_request(request):
-            nonlocal found_m3u8
-            url = request.url
-            if ".m3u8" in url:
-                print(f"[FOUND] M3U8 Link: {url}")
-                found_m3u8 = url
+        # --- PART 2: COLLECT ALL MATCH LINKS ---
+        print("[-] Collecting match links...")
+        # Waiting a bit for lists to render
+        time.sleep(3) 
+        
+        # Get all anchor tags
+        all_links = page.locator("a").all()
+        matches_to_scan = []
 
-        page.on("request", handle_request)
+        for link in all_links:
+            try:
+                text = link.text_content().strip()
+                href = link.get_attribute("href")
+                
+                # FILTER LOGIC:
+                # 1. Must have an href
+                # 2. Ignore the "Please note" warning banner
+                # 3. Must contain typical match keywords like "vs", "CH", "League" or exist inside the main list
+                # Since structure is variable, we check if text length is decent and not the warning
+                
+                if href and "javascript" not in href and len(text) > 5:
+                    if "domain changed" in text or "fake" in text:
+                        continue # Skip the banner
+                    
+                    # Logic: Assuming matches have "vs" or "CH" or are just valid links in the body
+                    # To be safe, let's take links that likely point to internal match pages
+                    # Usually internal links are relative (start with /) or contain the domain
+                    
+                    # Store Title and Full URL
+                    full_url = href if href.startswith("http") else BASE_URL.rstrip("/") + "/" + href.lstrip("/")
+                    
+                    # Only add if it looks like a match link (simple heuristic)
+                    if "http" in full_url:
+                        matches_to_scan.append({"Title": text, "Link": full_url})
+            except:
+                continue
 
-        # --- STEP 3: CLICK ON A MATCH ---
-        try:
-            print("[-] Searching for a match to click...")
+        # Remove duplicates based on URL
+        unique_matches = {v['Link']: v for v in matches_to_scan}.values()
+        print(f"[-] Found {len(unique_matches)} potential matches.")
+
+        # --- PART 3: VISIT EACH MATCH & EXTRACT M3U8 ---
+        final_data = []
+        
+        for index, match in enumerate(unique_matches):
+            print(f"\n[{index+1}/{len(unique_matches)}] Processing: {match['Title']}")
             
-            # Screenshot onujayi "CH 1" ba "vs" lekha ache emon link khujbe
-            # Amra prothom "CH" (Channel) ba Match link e click korbo
+            # Open a new page for each match to keep it clean
+            match_page = context.new_page()
+            m3u8_found = None
+
+            # Listener for this specific page
+            def handle_request(request):
+                nonlocal m3u8_found
+                if ".m3u8" in request.url and "master" in request.url:
+                    m3u8_found = request.url
+
+            match_page.on("request", handle_request)
+
+            try:
+                # Go to the match link directly
+                match_page.goto(match['Link'], timeout=40000, wait_until="domcontentloaded")
+                
+                # Wait for player/network to trigger
+                # Just waiting is enough as you said player loads automatically
+                for _ in range(10): # Wait up to 10 seconds
+                    if m3u8_found:
+                        break
+                    time.sleep(1)
+                
+                if m3u8_found:
+                    print(f"   -> [FOUND] {m3u8_found}")
+                    final_data.append({
+                        "Title": match['Title'],
+                        "Link": m3u8_found
+                    })
+                else:
+                    print("   -> [FAIL] No m3u8 detected.")
             
-            # Option A: Try to find text containing "CH" (like CH 1, CH 2)
-            match_element = page.locator("text=CH").first
+            except Exception as e:
+                print(f"   -> [ERROR] {e}")
             
-            # Option B: If A fails, click the first available link in the list
-            if not match_element.is_visible():
-                 match_element = page.locator("a[href*='match']").first 
+            finally:
+                match_page.close()
 
-            if match_element.is_visible():
-                match_name = match_element.text_content().strip()
-                print(f"[-] Clicking on match/channel: {match_name}")
-                
-                # Handling new tab if it opens in new window
-                with context.expect_page() as new_page_info:
-                    match_element.click()
-                
-                # Switch to the new player page
-                player_page = new_page_info.value
-                player_page.wait_for_load_state()
-                print("[-] Player page loaded. Waiting for video...")
-                
-                # Attach listener to new page as well
-                player_page.on("request", handle_request)
-                
-                # Wait for video to start and m3u8 to generate
-                time.sleep(15) 
-                
-            else:
-                print("[ERROR] No clickable match found.")
-
-        except Exception as e:
-            print(f"[ERROR] Interaction failed: {e}")
-
-        # --- STEP 4: SAVE DATA ---
-        if found_m3u8:
-            save_data(found_m3u8)
+        # --- PART 4: SAVE JSON ---
+        if final_data:
+            with open(OUTPUT_FILE, "w") as f:
+                json.dump(final_data, f, indent=4)
+            print(f"\n[SUCCESS] Saved {len(final_data)} matches to {OUTPUT_FILE}")
         else:
-            print("[FAIL] No M3U8 link found. Maybe video didn't play?")
+            print("\n[WARN] No m3u8 links were extracted from any match.")
 
         browser.close()
-
-def save_data(link):
-    data = []
-    if os.path.exists(OUTPUT_FILE):
-        try:
-            with open(OUTPUT_FILE, "r") as f:
-                data = json.load(f)
-        except:
-            data = []
-
-    new_entry = {
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "source": "FawaNews",
-        "link": link
-    }
-    data.append(new_entry)
-
-    with open(OUTPUT_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-    print(f"[SAVED] Link saved to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     run()
