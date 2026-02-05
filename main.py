@@ -3,140 +3,121 @@ import os
 import time
 from playwright.sync_api import sync_playwright
 
-# --- CONFIGURATION ---
 BASE_URL = "http://www.fawanews.sc/"
 OUTPUT_FILE = "fawanews_links.json"
-MATCH_LIMIT = 5  # Sudhu matro Prothom 5 ta match check korbe
+MATCH_LIMIT = 5
 
 def run():
     with sync_playwright() as p:
-        print("[-] Initializing Browser...")
+        print("[-] Launching Browser...")
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            ignore_https_errors=True
         )
-        
         page = context.new_page()
-        
-        # --- PART 1: UNLIMITED WAIT FOR HOME PAGE (Refresh Logic) ---
-        print(f"[-] Trying to connect to: {BASE_URL}")
-        
-        attempt = 0
+
+        # --- PART 1: LOAD PAGE WITH LIMIT (NO INFINITE LOOP) ---
+        print(f"[-] Accessing: {BASE_URL}")
         site_loaded = False
         
-        while not site_loaded:
-            attempt += 1
+        # Max 15 attempts (Approx 2-3 mins max)
+        for attempt in range(1, 16):
             try:
-                # Timeout '0' mane infinite wait for loading
-                page.goto(BASE_URL, timeout=0, wait_until="domcontentloaded")
+                print(f"[*] Attempt {attempt}/15...")
+                page.goto(BASE_URL, timeout=30000, wait_until="domcontentloaded")
                 
-                # Check jodi "Sports News" ba "Schedule" lekha thake
-                content_check = page.locator("text=Sports News").or_(page.locator("text=Schedule"))
+                # Take a screenshot to debug later
+                page.screenshot(path=f"debug_attempt_{attempt}.png")
+
+                # Logic: Blocked page e link kom thake. Main page e onek link thake.
+                link_count = page.locator("a").count()
                 
-                if content_check.is_visible():
-                    print(f"[SUCCESS] Main Page Loaded after {attempt} attempts!")
+                # Jodi "Sports News" lekha thake OTHOBA 20 tar beshi link thake
+                if page.locator("text=Sports News").is_visible() or link_count > 20:
+                    print(f"[SUCCESS] Main page loaded! (Found {link_count} links)")
                     site_loaded = True
                     break
                 else:
-                    # Block page ba onno kichu asle refresh
-                    print(f"[INFO] Blocked/Loading... Refreshing (Attempt {attempt})")
-                    time.sleep(5) # 5 seconds rest niye abar refresh
-                    
+                    print(f"[INFO] Still blocked/loading. Links found: {link_count}. Retrying...")
+                    time.sleep(5)
             except Exception as e:
-                print(f"[RETRY] Connection error. Retrying... (Attempt {attempt})")
+                print(f"[ERROR] {e}")
                 time.sleep(5)
 
-        # --- PART 2: COLLECT TOP 5 MATCHES ---
-        print("[-] Collecting match list...")
-        time.sleep(5) # Page ta valo vabe render hote time dilam
-        
-        all_links = page.locator("a").all()
+        if not site_loaded:
+            print("[FATAL] Could not bypass the block after 15 attempts.")
+            # Save final screenshot
+            page.screenshot(path="final_fail_state.png")
+            browser.close()
+            # Force exit so workflow doesn't run extra logic
+            return
+
+        # --- PART 2: COLLECT MATCHES ---
+        print("[-] Collecting matches...")
         matches_to_scan = []
-        
-        # Keyword filter (Ei word gulo thaklei match hisebe count hobe)
-        keywords = ["vs", "ch ", "ch-", "league", "cup", "sport"]
+        all_links = page.locator("a").all()
+        keywords = ["vs", "ch ", "ch-", "league", "cup"]
 
         for link in all_links:
             try:
                 text = link.text_content().strip()
                 href = link.get_attribute("href")
-                
                 if not href or len(text) < 4: continue
                 
-                text_lower = text.lower()
-                is_match = any(k in text_lower for k in keywords)
-                
-                # Banner link gulo bad dewar jonno
-                is_not_banner = "domain" not in text_lower and "fake" not in text_lower
-                
-                if is_match and is_not_banner:
-                    # Full URL banano
+                # Check keywords
+                if any(k in text.lower() for k in keywords) and "domain" not in text.lower():
                     full_url = href if href.startswith("http") else BASE_URL.rstrip("/") + "/" + href.lstrip("/")
                     matches_to_scan.append({"Title": text, "Link": full_url})
             except:
                 continue
 
-        # Remove Duplicates
+        # Unique & Limit
         unique_matches = list({v['Link']: v for v in matches_to_scan}.values())
-        
-        # --- APPLY LIMIT (TOP 5) ---
-        # Jodi match 5 tar beshi thake, kete 5 ta korbe. Kom thakle ja ache tai.
         if len(unique_matches) > MATCH_LIMIT:
-            print(f"[-] Found {len(unique_matches)} matches. Taking TOP {MATCH_LIMIT} for testing.")
             unique_matches = unique_matches[:MATCH_LIMIT]
-        else:
-            print(f"[-] Found {len(unique_matches)} matches.")
-
-        # --- PART 3: EXTRACT M3U8 (Patiently) ---
-        final_data = []
         
+        print(f"[-] Found {len(unique_matches)} matches to process.")
+
+        # --- PART 3: EXTRACT LINKS ---
+        final_data = []
         for index, match in enumerate(unique_matches):
-            print(f"\n[{index+1}/{len(unique_matches)}] Processing: {match['Title']}")
-            
-            match_page = context.new_page()
+            print(f"[{index+1}/{len(unique_matches)}] checking: {match['Title']}")
+            page_match = context.new_page()
             m3u8_found = None
-
-            # Network Listener
-            def handle_request(request):
+            
+            def handle(req):
                 nonlocal m3u8_found
-                if ".m3u8" in request.url and "master" in request.url:
-                    m3u8_found = request.url
-
-            match_page.on("request", handle_request)
-
+                if ".m3u8" in req.url and "master" in req.url:
+                    m3u8_found = req.url
+            
+            page_match.on("request", handle)
+            
             try:
-                # Match page e dhuklam
-                match_page.goto(match['Link'], timeout=60000, wait_until="domcontentloaded")
-                
-                # Video load houar jonno 20 seconds wait korbo (No Rush)
-                print("   -> Waiting for video/network...")
-                for _ in range(20): 
+                page_match.goto(match['Link'], timeout=40000)
+                # Wait 15s for video
+                for _ in range(15):
                     if m3u8_found: break
                     time.sleep(1)
                 
                 if m3u8_found:
-                    print(f"   -> [SUCCESS] Link Found!")
-                    final_data.append({
-                        "Title": match['Title'],
-                        "Link": m3u8_found
-                    })
+                    print(f"   -> FOUND: {m3u8_found}")
+                    final_data.append({"Title": match['Title'], "Link": m3u8_found})
                 else:
-                    print("   -> [FAIL] No m3u8 link generated.")
-            
-            except Exception as e:
-                print(f"   -> [ERROR] {e}")
-            
+                    print("   -> Not found")
+                    # Screenshot failure page
+                    page_match.screenshot(path=f"fail_match_{index}.png")
+            except:
+                pass
             finally:
-                match_page.close()
+                page_match.close()
 
-        # --- PART 4: SAVE TO JSON ---
+        # Save
         if final_data:
             with open(OUTPUT_FILE, "w") as f:
                 json.dump(final_data, f, indent=4)
-            print(f"\n[DONE] Saved {len(final_data)} matches to {OUTPUT_FILE}")
-        else:
-            print("\n[DONE] No links extracted.")
-
+            print("[DONE] Saved data.")
+        
         browser.close()
 
 if __name__ == "__main__":
