@@ -1,0 +1,38 @@
+name: FawaNews M3U8 Grabber
+
+on:
+  schedule:
+    # Runs every 6 hours (Adjust if needed)
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Allows manual run button
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps
+
+      - name: Run Scraper Script
+        run: python main.py
+
+      - name: Commit and Push Results
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Auto: New M3U8 link fetched"
+          file_pattern: fawanews_links.json
