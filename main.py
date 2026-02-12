@@ -6,24 +6,24 @@ BASE_URL = "http://www.fawanews.sc/"
 OUTPUT_FILE = "fawanews_links.json"
 
 # --- SMART FILTER SETTINGS ---
-# Ei word gulo thakle bujhbo eta NEWS, tai nabo na.
+# Ei word gulo thakle bujhbo eta NEWS, Khela na. Tai click korbo na.
 NEWS_KEYWORDS = [
     "announce", "admit", "difficult", "retirement", "chief", 
     "report", "confirm", "interview", "says", "warns", "exit", 
-    "driver", "reserve", "statement", "suspension", "injury"
+    "driver", "reserve"
 ]
 
 # Ei word gulo thakle bujhbo eta KHELA.
 MATCH_KEYWORDS = [
     " vs ", " v ", "cup", "league", "atp", "wta", "golf", 
-    "sport", "cricket", "football", "tennis", "tour", "nba", 
-    "basketball", "race", "prix"
+    "sport", "cricket", "football", "tennis", "tour"
 ]
 
 def run():
     with sync_playwright() as p:
-        print("[-] Launching Browser...")
+        print("[-] Launching Smart Browser...")
         
+        # Anti-detection setup
         browser = p.chromium.launch(
             headless=True,
             args=[
@@ -45,9 +45,10 @@ def run():
         print(f"[-] Accessing: {BASE_URL}")
         site_loaded = False
         
-        for attempt in range(1, 4):
+        for attempt in range(1, 4): # Max 3 tries
             try:
-                page.goto(BASE_URL, timeout=40000, wait_until="domcontentloaded")
+                page.goto(BASE_URL, timeout=35000, wait_until="domcontentloaded")
+                # Body load holei hobe
                 if page.locator("body").is_visible():
                     print(f"[SUCCESS] Page loaded.")
                     site_loaded = True
@@ -61,50 +62,64 @@ def run():
             browser.close()
             return
 
-        # --- PART 2: GET MATCHES (NO LENGTH LIMIT) ---
-        print("[-] Scanning for matches...")
+        # --- PART 2: GET ALL MATCHES (NO LIMIT + NEWS FILTER) ---
+        print("[-] Scanning for matches (Ignoring News)...")
+        
         matches_to_scan = []
         try:
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(3000) # Link gulo render hote time dilam
             all_links = page.locator("a").all()
         except:
             all_links = []
+
+        print(f"[-] Total links found: {len(all_links)}")
 
         for link in all_links:
             try:
                 text = link.text_content().strip()
                 href = link.get_attribute("href")
                 
-                # Basic validation
+                # Basic check
                 if not href or len(text) < 4: continue
-                if "domain" in text.lower(): continue 
+                if "domain" in text.lower(): continue # Domain sell ads bad
                 
                 text_lower = text.lower()
                 
-                # 1. News Filter (Bad words check)
+                # --- LOGIC 1: NEWS FILTER (BAD WORDS) ---
+                # Jodi news er word thake, bad dau
                 if any(bad_word in text_lower for bad_word in NEWS_KEYWORDS):
                     continue
                 
-                # 2. Match Confirm (Good words check)
+                # --- LOGIC 2: LENGTH CHECK ---
+                # News headline sadharonoto onek boro hoy. Khela (Team A vs Team B) choto hoy.
+                # 65 character er beshi holei news hobar chance beshi
+                if len(text) > 65:
+                    continue
+
+                # --- LOGIC 3: MATCH CONFIRMATION ---
+                # "vs" thakle confirm khela. Othoba Match keyword thakle nabo.
                 is_match = False
+                
                 if " vs " in text_lower or " v " in text_lower:
                     is_match = True
                 elif any(k in text_lower for k in MATCH_KEYWORDS):
                     is_match = True
                 
-                # *NOTE: Length limit removed completely*
-                
+                # Jodi match hoy, list e add koro
                 if is_match:
                     full_url = href if href.startswith("http") else BASE_URL.rstrip("/") + "/" + href.lstrip("/")
                     matches_to_scan.append({"Title": text, "Link": full_url})
+                    
             except:
                 continue
 
-        # Remove duplicates
+        # Duplicate remove
         unique_matches = list({v['Link']: v for v in matches_to_scan}.values())
-        print(f"[-] Processing {len(unique_matches)} matches.")
+        
+        # EKHANE KONO LIMIT NEI (Sob match nibe)
+        print(f"[-] Processing {len(unique_matches)} confirmed matches (News skipped).")
 
-        # --- PART 3: EXTRACT & FORMAT DATA ---
+        # --- PART 3: EXTRACT LINKS ---
         final_data = []
         
         for index, match in enumerate(unique_matches):
@@ -122,11 +137,12 @@ def run():
             match_page.on("request", handle)
             
             try:
-                match_page.goto(match['Link'], timeout=30000, wait_until="domcontentloaded")
-                time.sleep(6) # Wait for player
+                match_page.goto(match['Link'], timeout=25000, wait_until="domcontentloaded")
+                time.sleep(6) # Player load time
                 
                 # Click logic
                 try:
+                    # JS click (Best for overlay)
                     match_page.evaluate("document.elementFromPoint(640, 360).click()")
                 except:
                     try:
@@ -134,7 +150,7 @@ def run():
                     except:
                         pass
                 
-                # Wait for network
+                # Wait for link
                 for _ in range(8):
                     if m3u8_found: break
                     time.sleep(1)
@@ -142,28 +158,26 @@ def run():
                 if m3u8_found:
                     print(f"   -> [FOUND] Success")
                     
-                    # --- JSON FORMATTING ---
+                    # --- NEW FORMATTING HERE ---
                     
-                    # 1. Id: Serial Number (1, 2, 3...)
+                    # 1. ID Generate
                     match_id = str(len(final_data) + 1)
                     
-                    # 2. Rivels: Title theke "---" er porer onsho bad deoa
+                    # 2. Rivels (Title theke --- bad deoa)
                     raw_title = match['Title']
                     if "---" in raw_title:
                         rivels = raw_title.split("---")[0].strip()
                     else:
                         rivels = raw_title
-                        
-                    # 3. Title: Full title jemon ache temon e thakbe
-                    full_title = raw_title 
-
-                    # 4. Link: With referer
+                    
+                    # 3. Link (Referer add kora)
                     formatted_link = f"{m3u8_found}|referer=http://www.fawanews.sc/"
 
+                    # Data entry
                     entry = {
                         "Id": match_id,
                         "Rivels": rivels,
-                        "Title": full_title,
+                        "Title": raw_title, # Full title jemon chilo
                         "Link": formatted_link
                     }
                     final_data.append(entry)
@@ -175,7 +189,7 @@ def run():
             finally:
                 match_page.close()
 
-        # --- PART 4: SAVE JSON ---
+        # --- PART 4: SAVE ---
         with open(OUTPUT_FILE, "w") as f:
             json.dump(final_data, f, indent=4)
         
@@ -183,6 +197,7 @@ def run():
             print(f"[DONE] Saved {len(final_data)} matches to {OUTPUT_FILE}")
         else:
             print("[DONE] No live streams found.")
+            # Khali file banano jate error na hoy
             with open(OUTPUT_FILE, "w") as f:
                 json.dump([], f)
 
