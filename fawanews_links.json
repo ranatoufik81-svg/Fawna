@@ -1,50 +1,50 @@
 [
     {
         "Id": "1",
-        "Rivels": "Cricket T20 World Cup 06:30",
-        "Title": "Live Match",
+        "Rivels": "Sri Lanka vs Oman --- CH 1",
+        "Title": "Cricket T20 World Cup 06:30",
         "Link": "http://195.178.110.27/hls/FFFFn.m3u8|referer=http://www.fawanews.sc/"
     },
     {
         "Id": "2",
-        "Rivels": "Cricket T20 World Cup 06:30",
-        "Title": "Live Match",
+        "Rivels": "Sri Lanka vs Oman --- CH 2",
+        "Title": "Cricket T20 World Cup 06:30",
         "Link": "https://b.rtzsa.cfd/hls/FFFFn.m3u8|referer=http://www.fawanews.sc/"
     },
     {
         "Id": "3",
-        "Rivels": "Olympic Winter Games --:--",
-        "Title": "Live Match",
+        "Rivels": "Olympic Winter Games --- CH 1",
+        "Title": "Olympic Winter Games --:--",
         "Link": "http://195.178.110.25/hls/FAFAFAQQ.m3u8|referer=http://www.fawanews.sc/"
     },
     {
         "Id": "4",
-        "Rivels": "Olympic Winter Games --:--",
-        "Title": "Live Match",
+        "Rivels": "Olympic Winter Games --- CH 2",
+        "Title": "Olympic Winter Games --:--",
         "Link": "http://195.178.110.25/hls/FAFAFAQQQ.m3u8|referer=http://www.fawanews.sc/"
     },
     {
         "Id": "5",
-        "Rivels": "Olympic Winter Games --:--",
-        "Title": "Live Match",
+        "Rivels": "Olympic Winter Games --- CH 3",
+        "Title": "Olympic Winter Games --:--",
         "Link": "http://195.178.110.25/hls/BAAA.m3u8|referer=http://www.fawanews.sc/"
     },
     {
         "Id": "6",
-        "Rivels": "Olympic Winter Games --:--",
-        "Title": "Live Match",
+        "Rivels": "Olympic Winter Games --- CH 4",
+        "Title": "Olympic Winter Games --:--",
         "Link": "http://195.178.110.25/hls/BAAAX.m3u8|referer=http://www.fawanews.sc/"
     },
     {
         "Id": "7",
-        "Rivels": "Olympic Winter Games --:--",
-        "Title": "Live Match",
+        "Rivels": "Olympic Winter Games --- CH 5",
+        "Title": "Olympic Winter Games --:--",
         "Link": "http://195.178.110.25/hls/BAAAXG.m3u8|referer=http://www.fawanews.sc/"
     },
     {
         "Id": "8",
-        "Rivels": "Olympic Winter Games --:--",
-        "Title": "Live Match",
+        "Rivels": "Olympic Winter Games --- CH 6",
+        "Title": "Olympic Winter Games --:--",
         "Link": "http://195.178.110.25/hls/BAAAXGQ.m3u8|referer=http://www.fawanews.sc/"
     }
 ]
