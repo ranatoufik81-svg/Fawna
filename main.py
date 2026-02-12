@@ -6,15 +6,18 @@ BASE_URL = "http://www.fawanews.sc/"
 OUTPUT_FILE = "fawanews_links.json"
 
 # --- SMART FILTER SETTINGS ---
+# Ei word gulo thakle bujhbo eta NEWS, tai nabo na.
 NEWS_KEYWORDS = [
     "announce", "admit", "difficult", "retirement", "chief", 
     "report", "confirm", "interview", "says", "warns", "exit", 
-    "driver", "reserve"
+    "driver", "reserve", "statement", "suspension", "injury"
 ]
 
+# Ei word gulo thakle bujhbo eta KHELA.
 MATCH_KEYWORDS = [
     " vs ", " v ", "cup", "league", "atp", "wta", "golf", 
-    "sport", "cricket", "football", "tennis", "tour"
+    "sport", "cricket", "football", "tennis", "tour", "nba", 
+    "basketball", "race", "prix"
 ]
 
 def run():
@@ -44,7 +47,7 @@ def run():
         
         for attempt in range(1, 4):
             try:
-                page.goto(BASE_URL, timeout=35000, wait_until="domcontentloaded")
+                page.goto(BASE_URL, timeout=40000, wait_until="domcontentloaded")
                 if page.locator("body").is_visible():
                     print(f"[SUCCESS] Page loaded.")
                     site_loaded = True
@@ -58,7 +61,7 @@ def run():
             browser.close()
             return
 
-        # --- PART 2: GET MATCHES (NEWS FILTERED) ---
+        # --- PART 2: GET MATCHES (NO LENGTH LIMIT) ---
         print("[-] Scanning for matches...")
         matches_to_scan = []
         try:
@@ -72,23 +75,24 @@ def run():
                 text = link.text_content().strip()
                 href = link.get_attribute("href")
                 
+                # Basic validation
                 if not href or len(text) < 4: continue
                 if "domain" in text.lower(): continue 
                 
                 text_lower = text.lower()
                 
-                # News Filter
+                # 1. News Filter (Bad words check)
                 if any(bad_word in text_lower for bad_word in NEWS_KEYWORDS):
                     continue
-                if len(text) > 70: # Long news headline skip
-                    continue
-
-                # Match Confirm
+                
+                # 2. Match Confirm (Good words check)
                 is_match = False
                 if " vs " in text_lower or " v " in text_lower:
                     is_match = True
                 elif any(k in text_lower for k in MATCH_KEYWORDS):
                     is_match = True
+                
+                # *NOTE: Length limit removed completely*
                 
                 if is_match:
                     full_url = href if href.startswith("http") else BASE_URL.rstrip("/") + "/" + href.lstrip("/")
@@ -96,6 +100,7 @@ def run():
             except:
                 continue
 
+        # Remove duplicates
         unique_matches = list({v['Link']: v for v in matches_to_scan}.values())
         print(f"[-] Processing {len(unique_matches)} matches.")
 
@@ -117,9 +122,10 @@ def run():
             match_page.on("request", handle)
             
             try:
-                match_page.goto(match['Link'], timeout=25000, wait_until="domcontentloaded")
-                time.sleep(6)
+                match_page.goto(match['Link'], timeout=30000, wait_until="domcontentloaded")
+                time.sleep(6) # Wait for player
                 
+                # Click logic
                 try:
                     match_page.evaluate("document.elementFromPoint(640, 360).click()")
                 except:
@@ -128,6 +134,7 @@ def run():
                     except:
                         pass
                 
+                # Wait for network
                 for _ in range(8):
                     if m3u8_found: break
                     time.sleep(1)
@@ -135,26 +142,28 @@ def run():
                 if m3u8_found:
                     print(f"   -> [FOUND] Success")
                     
-                    # --- NEW FORMATTING LOGIC ---
+                    # --- JSON FORMATTING ---
                     
-                    # 1. Id Generation (Serial Number)
+                    # 1. Id: Serial Number (1, 2, 3...)
                     match_id = str(len(final_data) + 1)
                     
-                    # 2. Rivels (Extraction from Title)
-                    # "Sri Lanka vs Oman --- CH 1" theke "Sri Lanka vs Oman" ber kora
+                    # 2. Rivels: Title theke "---" er porer onsho bad deoa
                     raw_title = match['Title']
                     if "---" in raw_title:
                         rivels = raw_title.split("---")[0].strip()
                     else:
-                        rivels = raw_title # Jodi "---" na thake, purotai rakhbo
+                        rivels = raw_title
                         
-                    # 3. Link with Referer
+                    # 3. Title: Full title jemon ache temon e thakbe
+                    full_title = raw_title 
+
+                    # 4. Link: With referer
                     formatted_link = f"{m3u8_found}|referer=http://www.fawanews.sc/"
 
                     entry = {
                         "Id": match_id,
                         "Rivels": rivels,
-                        "Title": raw_title,
+                        "Title": full_title,
                         "Link": formatted_link
                     }
                     final_data.append(entry)
@@ -174,7 +183,6 @@ def run():
             print(f"[DONE] Saved {len(final_data)} matches to {OUTPUT_FILE}")
         else:
             print("[DONE] No live streams found.")
-            # Empty file create kora
             with open(OUTPUT_FILE, "w") as f:
                 json.dump([], f)
 
