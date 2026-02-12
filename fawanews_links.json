@@ -1,14 +1,10 @@
 [
     {
-        "Id": "1",
-        "Rivels": "Cricket T20 World Cup 06:30",
         "Title": "Cricket T20 World Cup 06:30",
-        "Link": "http://195.178.110.27/hls/FFFFn.m3u8|referer=http://www.fawanews.sc/"
+        "Link": "http://195.178.110.27/hls/FFFFn.m3u8"
     },
     {
-        "Id": "2",
-        "Rivels": "Cricket T20 World Cup 06:30",
         "Title": "Cricket T20 World Cup 06:30",
-        "Link": "https://b.rtzsa.cfd/hls/FFFFn.m3u8|referer=http://www.fawanews.sc/"
+        "Link": "https://b.rtzsa.cfd/hls/FFFFn.m3u8"
     }
 ]
