@@ -12,7 +12,6 @@ NEWS_KEYWORDS = [
     "driver", "reserve", "statement", "suspension", "injury"
 ]
 
-# Ekhane "games", "olympic" jog kora holo jate sob khela ase
 MATCH_KEYWORDS = [
     " vs ", " v ", "cup", "league", "atp", "wta", "golf", 
     "sport", "cricket", "football", "tennis", "tour", "nba", 
@@ -60,7 +59,7 @@ def run():
             browser.close()
             return
 
-        # --- PART 2: GET MATCHES ---
+        # --- PART 2: GET MATCHES (PARENT TEXT LOGIC) ---
         print("[-] Scanning for matches...")
         matches_to_scan = []
         try:
@@ -71,37 +70,42 @@ def run():
 
         for link in all_links:
             try:
-                # inner_text() nile line break (\n) soho text ase, jeta title r rivels alada korte lagbe
-                raw_text = link.inner_text().strip()
+                # IMPORTANT FIX: Sudhu link er text na niye, tar Parent er text nicchi
+                # Jate Bold Text (Team Name) + Small Text (Title) duto e ase.
+                parent_element = link.locator("xpath=..")
+                full_text = parent_element.inner_text().strip()
+                
                 href = link.get_attribute("href")
                 
-                if not href or len(raw_text) < 4: continue
-                if "domain" in raw_text.lower(): continue 
+                if not href or len(full_text) < 4: continue
+                if "domain" in full_text.lower(): continue 
                 
-                text_lower = raw_text.lower()
+                text_lower = full_text.lower()
                 
                 # News Filter
                 if any(bad_word in text_lower for bad_word in NEWS_KEYWORDS):
                     continue
                 
-                # Match Confirm (Olympics soho)
+                # Match Confirm
                 is_match = False
                 if " vs " in text_lower or " v " in text_lower:
                     is_match = True
                 elif any(k in text_lower for k in MATCH_KEYWORDS):
                     is_match = True
                 
-                # Jodi match hoy, text process koro
                 if is_match:
-                    # Line Break diye alada kora (Top line = Rivels, Bottom line = Title)
-                    lines = [line.strip() for line in raw_text.split('\n') if line.strip()]
+                    # Line split logic (Top line = Rivels, Bottom line = Title)
+                    lines = [line.strip() for line in full_text.split('\n') if line.strip()]
                     
                     if len(lines) >= 2:
-                        rivels_text = lines[0] # Example: Sri Lanka vs Oman --- CH 1
-                        title_text = lines[1]  # Example: Cricket T20 World Cup
-                    else:
+                        # 1st Line = Team Name (Rivels) - Jemon: Sri Lanka vs Oman --- CH 1
                         rivels_text = lines[0]
-                        title_text = "Live Match" # Jodi niche kichu na lekha thake
+                        # 2nd Line = Title - Jemon: Cricket T20 World Cup
+                        title_text = lines[1]
+                    else:
+                        # Jodi ek line thake, tobe otai Rivels, Title hobe "Live Match"
+                        rivels_text = lines[0]
+                        title_text = "Live Match"
 
                     full_url = href if href.startswith("http") else BASE_URL.rstrip("/") + "/" + href.lstrip("/")
                     
@@ -159,10 +163,11 @@ def run():
                     # 2. Link with Referer
                     formatted_link = f"{m3u8_found}|referer=http://www.fawanews.sc/"
 
+                    # 3. Data Entry (Format Fixed)
                     entry = {
                         "Id": match_id,
-                        "Rivels": match['Rivels'], # Top bold text (With --- CH 1)
-                        "Title": match['Title'],   # Bottom grey text
+                        "Rivels": match['Rivels'], # Screenshot er UPPER BOLD text ekhane ashbe
+                        "Title": match['Title'],   # Screenshot er LOWER GREY text ekhane ashbe
                         "Link": formatted_link
                     }
                     final_data.append(entry)
