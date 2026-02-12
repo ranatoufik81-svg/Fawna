@@ -88,12 +88,14 @@ def run():
                 # --- LOGIC 1: NEWS FILTER (BAD WORDS) ---
                 # Jodi news er word thake, bad dau
                 if any(bad_word in text_lower for bad_word in NEWS_KEYWORDS):
+                    # print(f"    [SKIP-NEWS] {text[:30]}...") 
                     continue
                 
                 # --- LOGIC 2: LENGTH CHECK ---
                 # News headline sadharonoto onek boro hoy. Khela (Team A vs Team B) choto hoy.
                 # 65 character er beshi holei news hobar chance beshi
                 if len(text) > 65:
+                    # print(f"    [SKIP-LONG] {text[:30]}...")
                     continue
 
                 # --- LOGIC 3: MATCH CONFIRMATION ---
@@ -157,30 +159,7 @@ def run():
                 
                 if m3u8_found:
                     print(f"   -> [FOUND] Success")
-                    
-                    # --- NEW FORMATTING HERE ---
-                    
-                    # 1. ID Generate
-                    match_id = str(len(final_data) + 1)
-                    
-                    # 2. Rivels (Title theke --- bad deoa)
-                    raw_title = match['Title']
-                    if "---" in raw_title:
-                        rivels = raw_title.split("---")[0].strip()
-                    else:
-                        rivels = raw_title
-                    
-                    # 3. Link (Referer add kora)
-                    formatted_link = f"{m3u8_found}|referer=http://www.fawanews.sc/"
-
-                    # Data entry
-                    entry = {
-                        "Id": match_id,
-                        "Rivels": rivels,
-                        "Title": raw_title, # Full title jemon chilo
-                        "Link": formatted_link
-                    }
-                    final_data.append(entry)
+                    final_data.append({"Title": match['Title'], "Link": m3u8_found})
                 else:
                     print("   -> [FAIL] No video link.")
             
@@ -197,9 +176,6 @@ def run():
             print(f"[DONE] Saved {len(final_data)} matches to {OUTPUT_FILE}")
         else:
             print("[DONE] No live streams found.")
-            # Khali file banano jate error na hoy
-            with open(OUTPUT_FILE, "w") as f:
-                json.dump([], f)
 
         browser.close()
 
